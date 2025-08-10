@@ -1,16 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapPin, Camera, X, Check, AlertCircle, ArrowLeft } from 'lucide-react'
 import { AnswerType, GeolocationPosition } from '../types'
+import { checklistService } from '../services/checklistService'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 
-const STORES = [
-  { id: '1', nome: 'Matriz', slug: 'matriz' },
-  { id: '2', nome: 'Catedral', slug: 'catedral' },
-  { id: '3', nome: 'Mineiros', slug: 'mineiros' },
-  { id: '4', nome: 'Rharo', slug: 'rharo' },
-  { id: '5', nome: 'Said Abdala', slug: 'said-abdala' },
-  { id: '6', nome: 'Rio Verde', slug: 'rio-verde' }
-]
+// Stores will be loaded from Supabase
 
 const SAMPLE_QUESTIONS = [
   {
@@ -67,8 +62,45 @@ export function ChecklistFormPage() {
     photos: File[]
   }>>({})
   const [searchTerm, setSearchTerm] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [stores, setStores] = useState<any[]>([])
+  const [questions, setQuestions] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string>('')
 
-  const filteredStores = STORES.filter(store => 
+  // Load stores and questions on component mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true)
+        const [storesData, questionsData] = await Promise.all([
+          checklistService.getStores(),
+          checklistService.getQuestions()
+        ])
+        setStores(storesData)
+        setQuestions(questionsData)
+      } catch (error: any) {
+        console.error('Erro ao carregar dados:', error)
+        setError(error.message || 'Erro ao carregar dados')
+        // Fallback to sample data if Supabase fails
+        setStores([
+          { id: '1', nome: 'Matriz', slug: 'matriz' },
+          { id: '2', nome: 'Catedral', slug: 'catedral' },
+          { id: '3', nome: 'Mineiros', slug: 'mineiros' },
+          { id: '4', nome: 'Rharo', slug: 'rharo' },
+          { id: '5', nome: 'Said Abdala', slug: 'said-abdala' },
+          { id: '6', nome: 'Rio Verde', slug: 'rio-verde' }
+        ])
+        setQuestions(SAMPLE_QUESTIONS)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+  }, [])
+
+  const filteredStores = stores.filter(store => 
     store.nome.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
@@ -142,7 +174,7 @@ export function ChecklistFormPage() {
     let totalScore = 0
     let totalWeight = 0
 
-    SAMPLE_QUESTIONS.forEach(question => {
+    questions.forEach(question => {
       const answer = answers[question.id]
       if (answer?.resposta) {
         const factor = answer.resposta === 'SIM' ? 1 : answer.resposta === 'MEIO' ? 0.5 : 0
@@ -155,7 +187,7 @@ export function ChecklistFormPage() {
   }
 
   const isFormValid = () => {
-    const requiredQuestions = SAMPLE_QUESTIONS.filter(q => q.obrigatoria)
+    const requiredQuestions = questions.filter(q => q.obrigatoria)
     return requiredQuestions.every(question => {
       const answer = answers[question.id]
       return answer?.resposta && (answer.resposta === 'SIM' || answer.justificativa)
@@ -168,25 +200,75 @@ export function ChecklistFormPage() {
       return
     }
 
-    const score = calculateScore()
-    
-    // Here you would submit to Supabase
-    console.log('Submitting checklist:', {
-      store_id: selectedStore,
-      location,
-      answers,
-      score
-    })
+    setIsSubmitting(true)
+    setError('')
 
-    // Navigate to result page
-    navigate('/checklist/new-result', { 
-      state: { 
-        score,
-        store: STORES.find(s => s.id === selectedStore),
+    try {
+      const score = calculateScore()
+      
+      const submissionData = {
+        storeId: selectedStore,
+        location: location ? {
+          lat: location.latitude,
+          lng: location.longitude,
+          accuracy: location.accuracy
+        } : null,
         answers,
-        questions: SAMPLE_QUESTIONS
+        score,
+        questions: questions.map(q => ({ id: q.id, peso: q.peso }))
       }
-    })
+
+      const result = await checklistService.submitChecklist(submissionData)
+      
+      if (result.success) {
+        // Navigate to result page
+        navigate('/checklist/new-result', { 
+          state: { 
+            score,
+            store: stores.find(s => s.id === selectedStore),
+            answers,
+            questions,
+            checklistId: result.checklistId
+          }
+        })
+      }
+    } catch (error: any) {
+      console.error('Erro ao submeter checklist:', error)
+      setError(error.message || 'Erro ao salvar checklist')
+      alert(`Erro ao salvar checklist: ${error.message}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="p-4 flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <LoadingSpinner size="lg" />
+          <p className="mt-4 text-gray-600">Carregando dados...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show error state
+  if (error && stores.length === 0) {
+    return (
+      <div className="p-4">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          <p className="font-medium">Erro ao carregar dados</p>
+          <p className="text-sm mt-1">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-2 text-sm underline"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    )
   }
 
   if (step === 'store') {
@@ -291,7 +373,7 @@ export function ChecklistFormPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Checklist</h1>
             <p className="text-sm text-gray-500">
-              {STORES.find(s => s.id === selectedStore)?.nome}
+              {stores.find(s => s.id === selectedStore)?.nome}
             </p>
           </div>
         </div>
@@ -304,7 +386,7 @@ export function ChecklistFormPage() {
       </div>
 
       <div className="space-y-6">
-        {SAMPLE_QUESTIONS.map((question) => {
+        {questions.map((question) => {
           const answer = answers[question.id]
           const showJustification = answer?.resposta && answer.resposta !== 'SIM'
           
@@ -418,10 +500,10 @@ export function ChecklistFormPage() {
       <div className="pb-6">
         <button
           onClick={handleSubmit}
-          disabled={!isFormValid()}
+          disabled={!isFormValid() || isSubmitting}
           className="btn-primary w-full"
         >
-          Finalizar Checklist
+          {isSubmitting ? 'Salvando...' : 'Finalizar Checklist'}
         </button>
         
         {!isFormValid() && (

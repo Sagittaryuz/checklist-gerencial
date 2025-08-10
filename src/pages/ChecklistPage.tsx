@@ -6,6 +6,7 @@ import { ptBR } from 'date-fns/locale'
 import { Plus, FileText, MapPin, User, Calendar } from 'lucide-react'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ChecklistWithDetails } from '../types'
+import { checklistService } from '../services/checklistService'
 
 export function ChecklistPage() {
   const [filter, setFilter] = useState<'all' | 'today' | 'week'>('all')
@@ -13,49 +14,13 @@ export function ChecklistPage() {
   const { data: checklists, isLoading, error } = useQuery({
     queryKey: ['checklists', filter],
     queryFn: async (): Promise<ChecklistWithDetails[]> => {
-      // Simulated data for now - replace with actual API calls
-      return [
-        {
-          id: '1',
-          version_id: 'v1',
-          store_id: 'store1',
-          user_id: 'user1',
-          data_local: '2024-01-15T10:30:00',
-          data_utc: '2024-01-15T13:30:00Z',
-          lat: -16.6869,
-          lng: -49.2648,
-          acuracia: 10,
-          sem_gps: false,
-          score_total: 87.5,
-          created_at: '2024-01-15T13:30:00Z',
-          updated_at: '2024-01-15T13:30:00Z',
-          store: {
-            id: 'store1',
-            nome: 'Matriz',
-            slug: 'matriz',
-            ativo: true,
-            created_at: '2024-01-01T00:00:00Z',
-            updated_at: '2024-01-01T00:00:00Z'
-          },
-          user: {
-            id: 'user1',
-            nome: 'João Silva',
-            email: 'joao@jcruzeiro.com',
-            role: 'auditor' as const,
-            created_at: '2024-01-01T00:00:00Z',
-            updated_at: '2024-01-01T00:00:00Z'
-          },
-          version: {
-            id: 'v1',
-            nome: 'Checklist v1.0',
-            soma_pesos: 100,
-            publicado_em: '2024-01-01T00:00:00Z',
-            created_at: '2024-01-01T00:00:00Z',
-            updated_at: '2024-01-01T00:00:00Z'
-          },
-          answers: []
-        }
-      ]
+      try {
+        const data = await checklistService.getChecklists(filter)
+        return data as ChecklistWithDetails[]
+      } catch (error) {
+        console.error('Erro ao buscar checklists:', error)
+        throw error
+      }
     }
   })
 

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { useAuth } from '../contexts/AuthContext'
+import { pdfService } from '../services/pdfService'
 
 export function ChecklistResultPage() {
   const location = useLocation()
@@ -24,7 +25,7 @@ export function ChecklistResultPage() {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
 
-  const { score, store, answers, questions } = location.state || {}
+  const { score, store, answers, questions, checklistId } = location.state || {}
 
   if (!score || !store || !answers || !questions) {
     return (
@@ -63,13 +64,26 @@ export function ChecklistResultPage() {
     setIsGeneratingPDF(true)
     
     try {
-      // Here you would call the PDF generation API
-      await new Promise(resolve => setTimeout(resolve, 2000)) // Simulate API call
+      if (!user) {
+        throw new Error('Usuário não encontrado')
+      }
+
+      const pdfData = {
+        score,
+        store,
+        user,
+        answers,
+        questions,
+        checklistId
+      }
+
+      await pdfService.generateAndDownload(pdfData)
       
-      // For now, just show success message
-      alert('PDF gerado com sucesso!')
-    } catch (error) {
-      alert('Erro ao gerar PDF')
+      // Show success message
+      alert('PDF gerado e baixado com sucesso!')
+    } catch (error: any) {
+      console.error('Erro ao gerar PDF:', error)
+      alert(`Erro ao gerar PDF: ${error.message}`)
     } finally {
       setIsGeneratingPDF(false)
     }
